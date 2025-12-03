@@ -34,7 +34,7 @@ const SystemBootLoader = ({ onReady }) => {
       } catch (e) {
         // If server is cold, it might fail initially. Keep retrying.
       }
-    }, 1000);
+    }, 5000);
     return () => clearInterval(interval);
   }, [logs]);
 
