@@ -15,7 +15,7 @@ import {
 
 // Import the visualization component
 import ImageCanvas from './ImageCanvas';
-
+import SystemBootLoader from './SystemBootLoader';
 // Configuration for the Flask Backend
 const API_BASE_URL = "https://teamisrogeonli39--geonli-backend-flask-app-dev.modal.run"; 
 const UPLOAD_ENDPOINT = `${API_BASE_URL}/api/upload`;
@@ -53,6 +53,8 @@ const App = () => {
   const fileInputRef = useRef(null);
   const chatEndRef = useRef(null);
   const renameInputRef = useRef(null);
+
+  const [isModelReady, setIsModelReady] = useState(false);
 
   const currentSession = sessions.find(s => s.id === currentSessionId) || sessions[0];
 
@@ -261,7 +263,9 @@ const App = () => {
       handleSendMessage();
     }
   };
-
+  if (!isModelReady) {
+    return <SystemBootLoader onReady={() => setIsModelReady(true)} />;
+  }
   return (
     <div className={`h-screen w-full flex flex-col ${isDarkMode ? 'bg-[#0f111a] text-gray-100' : 'bg-gray-50 text-gray-900'} font-sans transition-colors duration-500 overflow-hidden`}>
       
