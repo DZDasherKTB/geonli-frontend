@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Server, Cpu, Database, Eye, CheckCircle, Terminal, Layers, Activity } from 'lucide-react';
 
-const API_BASE_URL = "https://teamisrogeonli39--geonli-backend-flask-app-dev.modal.run"; 
+const API_BASE_URL = "https://teamisrogeonli39--geonli-backend-flask-app.modal.run"; 
 
 const SystemBootLoader = ({ onReady }) => {
   const [status, setStatus] = useState({ 
