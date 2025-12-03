@@ -19,7 +19,7 @@ import SystemBootLoader from './SystemBootLoader';
 
 // --- CONFIGURATION ---
 // The Modal Backend URL (A100 GPU Cluster)
-const API_BASE_URL = "https://teamisrogeonli39--geonli-backend-flask-app-dev.modal.run"; 
+const API_BASE_URL = "https://teamisrogeonli39--geonli-backend-flask-app.modal.run"; 
 const UPLOAD_ENDPOINT = `${API_BASE_URL}/api/upload`;
 const CHAT_ENDPOINT = `${API_BASE_URL}/api/chat`;
 
