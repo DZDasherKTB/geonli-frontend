@@ -6,32 +6,35 @@ import {
   Send, 
   Image as ImageIcon, 
   Trash2, 
-  Plus,
-  MoreVertical,
-  Bot,
-  User,
+  Plus, 
+  MoreVertical, 
+  Bot, 
+  User, 
   Edit2
 } from 'lucide-react';
 
-// Import the visualization component
+// --- CUSTOM COMPONENTS ---
 import ImageCanvas from './ImageCanvas';
 import SystemBootLoader from './SystemBootLoader';
-// Configuration for the Flask Backend
+
+// --- CONFIGURATION ---
+// The Modal Backend URL (A100 GPU Cluster)
 const API_BASE_URL = "https://teamisrogeonli39--geonli-backend-flask-app-dev.modal.run"; 
 const UPLOAD_ENDPOINT = `${API_BASE_URL}/api/upload`;
-// We use the smart chat endpoint for the frontend interaction
 const CHAT_ENDPOINT = `${API_BASE_URL}/api/chat`;
 
 const WELCOME_MESSAGE = { 
   id: 'welcome', 
   sender: 'bot', 
-  text: 'Welcome to geoNLI.\n1. Drop a satellite image in the middle panel.\n2. Ask geoNLI to describe regions, compare areas, or summarize the scene.\n',
+  text: 'Welcome to geoNLI.\n1. Drop a satellite image to initialize the system.\n2. Ask questions to locate objects or describe the scene.',
   timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 };
 
 const App = () => {
+  // --- STATE ---
   const [isDarkMode, setIsDarkMode] = useState(true);
-  
+  const [showLoader, setShowLoader] = useState(false); // Controls the "Boom Boom" Loader
+
   const [sessions, setSessions] = useState([
     { 
       id: 1, 
@@ -54,27 +57,21 @@ const App = () => {
   const chatEndRef = useRef(null);
   const renameInputRef = useRef(null);
 
-  const [isModelReady, setIsModelReady] = useState(false);
-
   const currentSession = sessions.find(s => s.id === currentSessionId) || sessions[0];
 
-  // --- HELPER: Extract latest grounding data for visualization ---
-  // We scan messages in reverse to find the most recent Bot message that has grounding data.
+  // Helper: Extract latest grounding boxes for the canvas
+  // Looks at the most recent bot message that has data
   const latestGrounding = [...(currentSession.messages || [])]
     .reverse()
     .find(m => m.grounding && m.grounding.length > 0)
     ?.grounding || [];
 
+  // Scroll to bottom on new message
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentSession.messages]);
 
-  useEffect(() => {
-    if (editingSessionId && renameInputRef.current) {
-      renameInputRef.current.focus();
-    }
-  }, [editingSessionId]);
-
+  // Handle clicking outside menus
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (renameInputRef.current && renameInputRef.current.contains(e.target)) return;
@@ -84,16 +81,22 @@ const App = () => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // --- FILE UPLOAD ---
+  // --- FILE UPLOAD HANDLER ---
   const handleFileUpload = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
+      // 1. Immediate UI Update
       const localPreviewUrl = URL.createObjectURL(file);
+      
+      // 2. TRIGGER LOADER (Wakes up the backend)
+      setShowLoader(true);
+
       const formData = new FormData();
       formData.append('file', file);
 
       try {
+        // 3. Send to Backend
         const response = await fetch(UPLOAD_ENDPOINT, {
           method: 'POST',
           body: formData,
@@ -103,6 +106,7 @@ const App = () => {
 
         const data = await response.json();
 
+        // 4. Update Session State
         setSessions(prevSessions => prevSessions.map(session => {
           if (session.id === currentSessionId) {
             const newTitle = session.title === 'New Session' ? file.name : session.title;
@@ -110,14 +114,14 @@ const App = () => {
               ...session,
               title: newTitle,
               image: localPreviewUrl,
-              serverImageUrl: `${API_BASE_URL}${data.url}`,
+              serverImageUrl: `${API_BASE_URL}${data.url}`, // Store cloud path
               imageId: data.file_id,
               messages: [
                 ...session.messages,
                 {
                   id: Date.now(),
                   sender: 'bot',
-                  text: `Image "${file.name}" uploaded. Ready for analysis.`,
+                  text: `Image "${file.name}" uploaded. System Online & Ready.`,
                   timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 }
               ]
@@ -126,29 +130,98 @@ const App = () => {
           return session;
         }));
 
+        // NOTE: We do NOT set showLoader(false) here.
+        // The SystemBootLoader component will poll /api/status and 
+        // close itself only when the models are fully loaded.
+
       } catch (error) {
         console.error("Upload Error:", error);
         alert("Failed to upload image. Ensure backend is running.");
+        setShowLoader(false); // Hide loader on failure
       }
+  };
+
+  // --- CHAT HANDLER ---
+  const handleSendMessage = async () => {
+    if (!inputText.trim()) return;
+
+    // 1. Add User Message
+    const userMessage = {
+      id: Date.now(),
+      sender: 'user',
+      text: inputText,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
+    setSessions(prev => prev.map(s => 
+      s.id === currentSessionId ? { ...s, messages: [...s.messages, userMessage] } : s
+    ));
+
+    const currentQueryText = inputText;
+    setInputText('');
+    setIsAnalyzing(true);
+
+    try {
+      const activeSession = sessions.find(s => s.id === currentSessionId);
+      if (!activeSession || !activeSession.serverImageUrl) {
+        throw new Error("Please upload a satellite image first.");
+      }
+
+      // 2. Send to Smart Agent
+      const response = await fetch(CHAT_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: currentQueryText,
+          image_url: activeSession.serverImageUrl,
+          session_id: activeSession.id
+        })
+      });
+
+      if (!response.ok) throw new Error("Backend processing failed");
+
+      const result = await response.json();
+
+      // 3. Handle Bot Response
+      const botMessage = {
+        id: Date.now() + 1,
+        sender: 'bot',
+        text: result.reply || "No response text generated.",
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        grounding: result.grounding // Boxes for ImageCanvas
+      };
+
+      setSessions(prev => prev.map(s => 
+        s.id === currentSessionId ? { ...s, messages: [...s.messages, botMessage] } : s
+      ));
+
+    } catch (error) {
+      console.error("Chat Error:", error);
+      const errorMessage = {
+        id: Date.now() + 1,
+        sender: 'bot',
+        text: `Error: ${error.message}.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setSessions(prev => prev.map(s => 
+        s.id === currentSessionId ? { ...s, messages: [...s.messages, errorMessage] } : s
+      ));
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // --- SESSION MANAGEMENT HELPERS ---
   const createNewSession = () => {
     const newId = Date.now();
     setSessions(prev => [{
-      id: newId,
-      title: 'New Session',
-      messages: [WELCOME_MESSAGE],
-      image: null
+      id: newId, title: 'New Session', messages: [WELCOME_MESSAGE], image: null
     }, ...prev]);
     setCurrentSessionId(newId);
   };
 
-  // --- UI ACTIONS ---
   const startRenaming = (e, session) => {
-    e.stopPropagation();
-    setEditingSessionId(session.id);
-    setTempTitle(session.title);
-    setActiveMenuId(null);
+    e.stopPropagation(); setEditingSessionId(session.id); setTempTitle(session.title); setActiveMenuId(null);
   };
 
   const saveRename = () => {
@@ -177,99 +250,22 @@ const App = () => {
     setActiveMenuId(activeMenuId === sessionId ? null : sessionId);
   };
 
-  // --- CHAT LOGIC ---
-  const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
-
-    // 1. Add User Message
-    const userMessage = {
-      id: Date.now(),
-      sender: 'user',
-      text: inputText,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-
-    setSessions(prev => prev.map(s => 
-      s.id === currentSessionId ? { ...s, messages: [...s.messages, userMessage] } : s
-    ));
-
-    const currentQueryText = inputText;
-    setInputText('');
-    setIsAnalyzing(true);
-
-    try {
-      const activeSession = sessions.find(s => s.id === currentSessionId);
-      if (!activeSession || !activeSession.serverImageUrl) {
-        throw new Error("Please upload a satellite image first.");
-      }
-
-      // 2. Construct Payload (Simple Natural Language)
-      // We rely on the backend Router/QueryProcessor to parse this.
-      const payload = {
-        text: currentQueryText,
-        image_id: activeSession.imageId || "unknown_id",
-        image_url: activeSession.serverImageUrl
-      };
-
-      // 3. Call Smart Backend
-      const response = await fetch(CHAT_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) throw new Error("Backend processing failed");
-
-      const result = await response.json();
-
-      // 4. Handle Response
-      // 'reply' contains the text answer (from VLM or Count logic)
-      const botResponseText = result.reply || result.text || "Analysis complete.";
-      
-      // 'raw_results.grounding' contains the bounding boxes if detection ran
-      const groundingData = result.raw_results?.grounding || result.grounding || null;
-
-      const botMessage = {
-        id: Date.now() + 1,
-        sender: 'bot',
-        text: botResponseText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        grounding: groundingData // Store this to display on ImageCanvas
-      };
-
-      setSessions(prev => prev.map(s => 
-        s.id === currentSessionId ? { ...s, messages: [...s.messages, botMessage] } : s
-      ));
-
-    } catch (error) {
-      console.error("Chat Error:", error);
-      const errorMessage = {
-        id: Date.now() + 1,
-        sender: 'bot',
-        text: `Error: ${error.message}. Ensure backend is running.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setSessions(prev => prev.map(s => 
-        s.id === currentSessionId ? { ...s, messages: [...s.messages, errorMessage] } : s
-      ));
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
   };
-  if (!isModelReady) {
-    return <SystemBootLoader onReady={() => setIsModelReady(true)} />;
-  }
+
   return (
     <div className={`h-screen w-full flex flex-col ${isDarkMode ? 'bg-[#0f111a] text-gray-100' : 'bg-gray-50 text-gray-900'} font-sans transition-colors duration-500 overflow-hidden`}>
       
-      {/* Header */}
+      {/* BOOTLOADER (Visible only during upload/startup) */}
+      {showLoader && (
+        <SystemBootLoader onReady={() => setShowLoader(false)} />
+      )}
+
+      {/* HEADER */}
       <header className={`h-16 border-b flex items-center justify-between px-6 transition-colors duration-500 ${isDarkMode ? 'bg-[#151924] border-gray-800' : 'bg-white border-gray-200'}`}>
         <div className="flex items-center gap-3">
           <div className="bg-indigo-600 px-3 py-1 rounded text-white font-bold tracking-wider text-sm shadow-lg">geoNLI</div>
@@ -289,10 +285,10 @@ const App = () => {
         </div>
       </header>
 
-      {/* Main Content Grid */}
+      {/* MAIN GRID */}
       <div className="flex-1 flex overflow-hidden">
         
-        {/* LEFT PANEL */}
+        {/* LEFT: SESSIONS */}
         <div className={`w-72 flex flex-col border-r ${isDarkMode ? 'bg-[#11141d] border-gray-800' : 'bg-gray-50 border-gray-200'}`}>
           <div className="p-4 border-b border-opacity-10 border-gray-500 flex justify-between items-center">
             <h2 className="font-semibold text-sm">Sessions</h2>
@@ -345,13 +341,13 @@ const App = () => {
           </div>
         </div>
 
-        {/* MIDDLE PANEL: Image Display Area */}
-        <div className={`flex-1 flex flex-col relative ${isDarkMode ? 'bg-[#0b0d12]' : 'bg-gray-100'}`}>
-          <div className="p-6 h-full flex flex-col justify-center items-center">
+        {/* MIDDLE: IMAGE PLAY AREA */}
+        <div className={`flex-1 p-6 flex flex-col items-center justify-center relative ${isDarkMode ? 'bg-[#0b0d12]' : 'bg-gray-100'}`}>
+          <div className="p-6 h-full flex flex-col justify-center items-center w-full">
             {currentSession.image ? (
               <div className="relative w-full h-full flex items-center justify-center bg-black/20 rounded-xl overflow-hidden border border-gray-700/50 backdrop-blur-sm p-2">
                 
-                {/* REPLACED IMG WITH CANVAS COMPONENT */}
+                {/* === INTELLIGENT CANVAS === */}
                 <ImageCanvas 
                   imageUrl={currentSession.image} 
                   groundingData={latestGrounding} 
@@ -374,14 +370,15 @@ const App = () => {
               >
                 <ImageIcon size={32} className="text-indigo-500 mb-4" />
                 <h3 className="font-semibold mb-2">Image play area</h3>
-                <button onClick={() => fileInputRef.current.click()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-medium mt-2">Choose file</button>
+                <p className="text-gray-500 mb-6 max-w-xs mx-auto">Upload a satellite image to initialize the system.</p>
+                <button onClick={() => fileInputRef.current.click()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-medium mt-2 shadow-lg shadow-indigo-500/20">Choose file</button>
               </div>
             )}
             <input type="file" ref={fileInputRef} id="image-upload" className="hidden" accept="image/*" onChange={handleFileUpload} />
           </div>
         </div>
 
-        {/* RIGHT PANEL: Chat */}
+        {/* RIGHT: CHAT */}
         <div className={`w-96 flex flex-col border-l ${isDarkMode ? 'bg-[#11141d] border-gray-800' : 'bg-white border-gray-200'}`}>
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
             {currentSession.messages.map((msg) => (

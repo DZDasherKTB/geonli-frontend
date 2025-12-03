@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Cpu, Eye, Target, Zap, CheckCircle } from 'lucide-react';
-import './SystemBoot.css'; // Ensure you save the CSS above
+import { Server, Cpu, Database, Eye, CheckCircle, Terminal, Layers, Activity } from 'lucide-react';
 
-const API_BASE_URL = "https://your-username--geonli-backend-flask-app-dev.modal.run"; 
+const API_BASE_URL = "https://teamisrogeonli39--geonli-backend-flask-app-dev.modal.run"; 
 
 const SystemBootLoader = ({ onReady }) => {
-  const [status, setStatus] = useState({ message: "Connecting...", detail: "Handshake", step: 0 });
-  const [logs, setLogs] = useState([]);
+  const [status, setStatus] = useState({ 
+    message: "Establishing Uplink...", 
+    detail: "Connecting to A100 Cluster...", 
+    step: 0,
+    total_steps: 5,
+    ready: false
+  });
+  const [logs, setLogs] = useState(["> Handshake initiated..."]);
 
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -16,94 +21,92 @@ const SystemBootLoader = ({ onReady }) => {
         
         setStatus(data);
         
-        // Add to scrolling log
-        if (logs[logs.length - 1] !== data.detail) {
-            setLogs(prev => [...prev, `>> ${data.detail}... OK`].slice(-5));
+        // Add log entry if detail changed
+        if (logs[logs.length - 1] !== `> ${data.detail}`) {
+            setLogs(prev => [...prev.slice(-6), `> ${data.detail}`]);
         }
 
         if (data.ready) {
           clearInterval(interval);
-          setTimeout(onReady, 1500); // Wait 1.5s to show "SUCCESS" before closing
+          // Wait 1.5s to show "Success" state before unmounting
+          setTimeout(onReady, 1500); 
         }
       } catch (e) {
-        // If api fails, it might be starting up
-        setStatus(prev => ({ ...prev, detail: "Waiting for server uplink..." }));
+        // If server is cold, it might fail initially. Keep retrying.
       }
     }, 1000);
     return () => clearInterval(interval);
   }, [logs]);
 
-  // Icons mapping
+  // Step Icons
   const icons = [
-    <Cpu size={64} className="text-blue-400 animate-bounce" />, // Init
-    <Eye size={64} className="text-purple-500 animate-pulse" />, // VQA (Qwen)
-    <Cpu size={64} className="text-green-400 animate-spin" />, // Parser
-    <Target size={64} className="text-red-500 animate-ping" />, // Detector
-    <Zap size={64} className="text-yellow-400 animate-bounce" />, // SAM
-    <CheckCircle size={64} className="text-green-500 scale-150 transition-transform" /> // Done
+    <Activity size={40} className="text-gray-400 animate-pulse" />, // 0
+    <Terminal size={40} className="text-blue-400 animate-pulse" />, // 1 Parser
+    <Cpu size={40} className="text-red-400 animate-pulse" />,       // 2 Detector
+    <Layers size={40} className="text-yellow-400 animate-pulse" />, // 3 Segmenter
+    <Eye size={40} className="text-purple-400 animate-pulse" />,    // 4 VQA
+    <CheckCircle size={40} className="text-green-500" />            // 5 Done
   ];
 
-  // Color mapping for "Fire" effect
-  const colors = [
-    "border-blue-500 shadow-blue-500/50",
-    "border-purple-500 shadow-purple-500/50",
-    "border-green-500 shadow-green-500/50",
-    "border-red-500 shadow-red-500/50",
-    "border-yellow-500 shadow-yellow-500/50",
-    "border-green-500 shadow-green-500/50"
-  ];
+  const percent = Math.min(100, Math.max(5, (status.step / 5) * 100));
 
   return (
-    <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center font-mono text-green-500 overflow-hidden">
-      {/* Background Matrix/Grid Effect */}
-      <div className="absolute inset-0 opacity-20 pointer-events-none" 
-           style={{ backgroundImage: 'linear-gradient(0deg, transparent 24%, rgba(0, 255, 0, .3) 25%, rgba(0, 255, 0, .3) 26%, transparent 27%, transparent 74%, rgba(0, 255, 0, .3) 75%, rgba(0, 255, 0, .3) 76%, transparent 77%, transparent), linear-gradient(90deg, transparent 24%, rgba(0, 255, 0, .3) 25%, rgba(0, 255, 0, .3) 26%, transparent 27%, transparent 74%, rgba(0, 255, 0, .3) 75%, rgba(0, 255, 0, .3) 76%, transparent 77%, transparent)', backgroundSize: '50px 50px' }}>
-      </div>
-      <div className="scanline"></div>
-
-      {/* Main Loader Circle */}
-      <div className={`relative w-64 h-64 rounded-full border-4 flex items-center justify-center bg-black/80 backdrop-blur-md transition-all duration-500 ${colors[status.step] || colors[0]} ${status.ready ? '' : 'fire-ring'}`}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f111a]/80 backdrop-blur-md transition-opacity duration-500">
+      
+      {/* Glass Card */}
+      <div className="relative w-[500px] bg-[#151924] border border-gray-700 rounded-xl shadow-2xl overflow-hidden flex flex-col">
         
-        {/* Center Icon */}
-        <div className="z-10">
-          {icons[status.step] || icons[0]}
+        {/* Header */}
+        <div className="h-10 bg-[#1a1f2e] border-b border-gray-700 flex items-center px-4 justify-between">
+          <div className="flex gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-red-500/50"></div>
+            <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/50"></div>
+            <div className="w-2.5 h-2.5 rounded-full bg-green-500/50"></div>
+          </div>
+          <span className="text-[10px] font-mono text-indigo-400 animate-pulse">
+            {status.ready ? "SYSTEM ONLINE" : "INITIALIZING..."}
+          </span>
         </div>
 
-        {/* Progress Ring */}
-        <svg className="absolute inset-0 transform -rotate-90 w-full h-full">
-          <circle
-            cx="128" cy="128" r="120"
-            stroke="currentColor"
-            strokeWidth="4"
-            fill="transparent"
-            className="text-gray-800"
-          />
-          <circle
-            cx="128" cy="128" r="120"
-            stroke="currentColor"
-            strokeWidth="4"
-            fill="transparent"
-            strokeDasharray={2 * Math.PI * 120}
-            strokeDashoffset={2 * Math.PI * 120 * (1 - (status.step / 5))}
-            className={`transition-all duration-1000 ease-out ${status.ready ? 'text-green-500' : 'text-white'}`}
-          />
-        </svg>
-      </div>
+        {/* Body */}
+        <div className="p-8 flex flex-col items-center">
+          
+          {/* Icon Circle */}
+          <div className="relative w-20 h-20 flex items-center justify-center mb-6">
+             {/* Spinner Ring */}
+             <div className={`absolute inset-0 border-2 border-indigo-500/30 rounded-full ${!status.ready && 'animate-[spin_3s_linear_infinite]'}`}></div>
+             <div className={`absolute inset-1 border-2 border-t-indigo-500 border-r-transparent border-b-indigo-500 border-l-transparent rounded-full ${!status.ready && 'animate-[spin_1.5s_linear_infinite]'}`}></div>
+             
+             <div className="z-10">
+                {status.ready ? icons[5] : icons[status.step] || icons[0]}
+             </div>
+          </div>
 
-      {/* Text Status */}
-      <h1 className="mt-12 text-4xl font-bold tracking-widest uppercase glitch">
-        {status.message}
-      </h1>
-      <p className="mt-2 text-xl text-gray-400 animate-pulse">
-        [{status.detail}]
-      </p>
+          <h2 className="text-lg font-semibold text-white tracking-wide mb-1">
+            {status.message}
+          </h2>
+          <p className="text-xs text-gray-400 mb-6 font-mono h-4">
+            {status.detail}
+          </p>
 
-      {/* Terminal Logs */}
-      <div className="mt-8 w-96 bg-gray-900/80 p-4 rounded border border-green-900 font-mono text-xs text-green-400 h-32 overflow-hidden flex flex-col justify-end">
-        {logs.map((log, i) => (
-            <div key={i}>{log}</div>
-        ))}
-        <div className="animate-pulse">_</div>
+          {/* Progress Bar */}
+          <div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden mb-6">
+            <div 
+              className="h-full bg-indigo-500 shadow-[0_0_10px_#6366f1] transition-all duration-500 ease-out"
+              style={{ width: `${percent}%` }}
+            ></div>
+          </div>
+
+          {/* Terminal Logs */}
+          <div className="w-full bg-black/40 rounded border border-gray-800 p-3 font-mono text-[10px] text-gray-400 h-24 overflow-hidden flex flex-col justify-end">
+            {logs.map((log, i) => (
+              <div key={i} className="truncate">
+                <span className="text-indigo-500 mr-1">➜</span> {log.replace('> ', '')}
+              </div>
+            ))}
+          </div>
+
+        </div>
       </div>
     </div>
   );
