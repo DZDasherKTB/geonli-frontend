@@ -1,11 +1,9 @@
 import React, { useState, useRef } from 'react';
 
-// Added displayMode prop to handle 'line_connect', 'box', etc.
 const ImageCanvas = ({ imageUrl, groundingData, displayMode = 'box' }) => {
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
   const containerRef = useRef(null);
 
-  // 1. Get natural image dimensions for accurate overlay mapping
   const onImgLoad = ({ target: img }) => {
     setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
   };
@@ -33,37 +31,38 @@ const ImageCanvas = ({ imageUrl, groundingData, displayMode = 'box' }) => {
             {/* --- LAYER 1: CONNECTION LINES (for Distance) --- */}
             {displayMode === 'line_connect' && groundingData.length >= 2 && (() => {
               const [obj1, obj2] = groundingData;
-              // bbox is [cx, cy, w, h, theta]
               const [x1, y1] = obj1.bbox;
               const [x2, y2] = obj2.bbox;
 
               return (
                 <g>
-                  {/* Dashed Yellow Line */}
+                  {/* Red Dashed Line */}
                   <line 
                     x1={x1} y1={y1} 
                     x2={x2} y2={y2} 
-                    stroke="#FFFF00" 
-                    strokeWidth="3" 
+                    stroke="#FF0000"  // <--- RED COLOR
+                    strokeWidth="4" 
                     strokeDasharray="12, 8"
-                    className="animate-pulse" // Optional: makes the line throb
+                    className="animate-pulse" 
+                    style={{ filter: "drop-shadow(0px 0px 4px rgba(0,0,0,0.8))" }}
                   />
-                  {/* Distance Label Marker (Midpoint) */}
-                  <circle cx={(x1+x2)/2} cy={(y1+y2)/2} r="5" fill="#FFFF00" />
+                  {/* Red Midpoint Marker */}
+                  <circle cx={(x1+x2)/2} cy={(y1+y2)/2} r="6" fill="#FF0000" stroke="white" strokeWidth="2" />
                 </g>
               );
             })()}
 
             {/* --- LAYER 2: ORIENTED BOUNDING BOXES --- */}
             {groundingData.map((obj, idx) => {
-              // Backend sends: [x_center, y_center, width, height, theta_radians]
               const [cx, cy, w, h, theta] = obj.bbox;
-              
-              // Convert Radians to Degrees for SVG rotation
               const degrees = (theta * 180) / Math.PI;
 
-              // Color Logic: Yellow for Distance mode, Green for standard detection
-              const baseColor = displayMode === 'line_connect' ? '#FFFF00' : '#00ff00';
+              // Color Logic: 
+              // If measuring distance, target boxes are RED. 
+              // Otherwise (standard detection), they are GREEN.
+              const baseColor = displayMode === 'line_connect' ? '#FF0000' : '#00ff00';
+              
+              // Low confidence items can still be yellow/orange if needed
               const strokeColor = obj.score > 0.6 ? baseColor : '#ffcc00';
 
               return (
@@ -79,23 +78,24 @@ const ImageCanvas = ({ imageUrl, groundingData, displayMode = 'box' }) => {
                     strokeWidth="3"
                     vectorEffect="non-scaling-stroke"
                     className="transition-all duration-300 ease-in-out"
+                    style={{ filter: "drop-shadow(0px 0px 2px rgba(0,0,0,0.5))" }}
                   />
                   
                   {/* Label Background */}
                   <rect
                     x={cx - w / 2}
-                    y={cy - h / 2 - 22}
-                    width={(obj.label.length * 10) + 24}
-                    height="22"
+                    y={cy - h / 2 - 24}
+                    width={(obj.label.length * 11) + 24}
+                    height="24"
                     fill={strokeColor}
                     opacity="0.9"
                   />
                   
                   {/* Label Text */}
                   <text
-                    x={cx - w / 2 + 4}
-                    y={cy - h / 2 - 6}
-                    fill="black"
+                    x={cx - w / 2 + 6}
+                    y={cy - h / 2 - 7}
+                    fill={displayMode === 'line_connect' ? 'white' : 'black'}
                     fontSize="14"
                     fontWeight="bold"
                     fontFamily="monospace"
