@@ -6,7 +6,7 @@ const API_BASE_URL = "https://teamisrogeonli39--geonli-backend-flask-app.modal.r
 const SystemBootLoader = ({ onReady }) => {
   const [status, setStatus] = useState({ 
     message: "Establishing Uplink...", 
-    detail: "Connecting to A100 Cluster...", 
+    detail: "Connecting to Modal Server", 
     step: 0,
     total_steps: 5,
     ready: false
